@@ -157,14 +157,24 @@ int main(int argc, char *argv[]){
   MPI_Wait(&req_A_recv, MPI_STATUS_IGNORE);
   
 
+  /*Initialisation of y_blocks*/
+
+  for(i = 0; i < blockrows_size; i++){
+     y_blocks[i] = 0.0 ;
+  }
+
   MPI_Bcast(&x[0],mat_size,MPI_DOUBLE,0,MPI_COMM_WORLD);
   //if(rank == 2)mat_mult( blockrows_size,mat_size,A_blockrows,x,y);
 
   
-  while (abs(lambda-lambda0) >= e && k <= M ){
-
-    k += 1;
-  }
+ // while (abs(lambda-lambda0) >= e && k <= M ){
+    mat_mult(blockrows_size, mat_size, A_blockrows, x, y_blocks);
+//    lambda0 = lambda ;
+    MPI_Allgather(y_blocks, blockrows_size,MPI_DOUBLE,y,blockrows_size,MPI_DOUBLE,MPI_COMM_WORLD);
+    mat_mult(mat_size,1,x,y,&lambda);
+ //   norm_vect(mat_size,y);
+ //   k += 1;
+ // }
   
   
   
@@ -173,10 +183,19 @@ int main(int argc, char *argv[]){
   sleep(rank);
   printf("rank %d \n", rank);
   Prvalues(mat_size,1,x);
+  Prvalues(blockrows_size,1,y_blocks);
+  Prvalues(mat_size,1,y);
+  printf("lambda = %.2f\t \n",lambda);
   //if (rank == 2) Prvalues(1, blockrows_size, y);
   Prvalues(mat_size, blockrows_size, A_blockrows);
 
   /*When the algorithm terminates we print the dominant eigein value and the associated eigen vector in root processor */ 
+
+  free(y_blocks);
+  free(y);
+  free(x);
+  free(A_blockrows);
+
 
   MPI_Type_free(&blockselect);
   MPI_Type_free(&blocktype);
