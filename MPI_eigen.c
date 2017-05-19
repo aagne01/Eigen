@@ -7,6 +7,134 @@
 #include <string.h>
 
 
+void Prvalues(int length, int heigth,  double matrix[length * heigth]);
+double compute_norm(int vect_length,double x[vect_length]);
+void norm_vect(int vect_length,double x[vect_length]);
+void mat_mult(int length, double A_rows[], double x[], double y[]);
+double power_method(double A[],int n_iterations,int mat_size);
+
+
+
+int main(int argc, char *argv[]){
+
+  int rank, nprocs, mat_size, blockrows_size, i, j, M ;
+  double lambda, e;
+ 
+  mat_size = atoi(argv[1]);
+   
+  //double x[2] = {1.0,1.0}; test of the norm_vect function
+
+
+  double *A_blockrows;
+  double *A;
+  
+  
+
+  
+
+ // x = malloc(mat_size*sizeof(double));
+  
+  M = 500;
+  e = 1e-6; //e is the tolerance
+  lambda = 0;
+  
+  
+  
+
+  MPI_Request req_A_send;
+  MPI_Request req_A_recv;
+
+  MPI_Init(&argc,&argv);
+  MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
+  MPI_Comm_rank(MPI_COMM_WORLD,&rank);
+
+  blockrows_size = mat_size / nprocs ;
+
+
+  /* Define new type to send datas */
+  MPI_Datatype blocktype, blockselect;
+
+  MPI_Type_contiguous(mat_size*blockrows_size, MPI_DOUBLE, &blocktype);
+  MPI_Type_commit(&blocktype);
+
+  MPI_Type_vector(blockrows_size, mat_size, mat_size, MPI_DOUBLE, &blockselect);
+  MPI_Type_commit(&blockselect);
+
+  if(rank == 0) {
+    /*We initialize the matrix A and send rows of A to the other processes */
+    A = (double *)malloc(sizeof(double) * mat_size * mat_size);
+
+    
+    /* Matrix generation*/
+    for(i = 0; i < mat_size; i++){
+       for(j = 0; j < mat_size; j++){
+          if (i == j){
+             A[i*mat_size + j] = (rand()/(double)RAND_MAX )*10;;
+          }
+          else{
+             A[i*mat_size +j] = 0;
+          }  
+       }    
+    }
+    Prvalues(mat_size, mat_size, A);
+    
+ 
+    /* Distribution of Block_rows of A */
+     for (i = 0; i < nprocs; i++){
+            int i_b_m = i * blockrows_size * mat_size;
+            MPI_Isend(&A[i_b_m], 1, blockselect, i, 3, MPI_COMM_WORLD, &req_A_send);
+            
+     }
+     
+     /* double norm = compute_norm(2,x);
+      printf("norm %.3f\t \n",norm);         // Testing the normalization of the vectors
+      norm_vect(2,x);
+      Prvalues(1,2,x);*/       
+  }
+
+  
+
+  /* After receiving rows of A, we start the power method and use Allgather to send y to all processes */
+  A_blockrows = (double *)malloc(mat_size * blockrows_size * sizeof(double));
+  MPI_Irecv(A_blockrows, 1, blocktype, 0, 3, MPI_COMM_WORLD, &req_A_recv);
+
+  MPI_Wait(&req_A_recv, MPI_STATUS_IGNORE);
+    
+ 
+    
+   lambda = power_method(A_blockrows,M,mat_size);
+  
+  
+
+  /* Printing Part*/
+  sleep(rank);
+  printf("rank %d \n", rank);
+  //Prvalues(mat_size,1,x);
+  //Prvalues(blockrows_size,1,y_blocks);
+  //Prvalues(mat_size,1,y);
+  if (rank == 0) printf("lambda = %.2f\t \n",lambda);
+  //if (rank == 2) Prvalues(1, blockrows_size, y);
+ // Prvalues(mat_size, blockrows_size, A_blockrows);
+
+  /*When the algorithm terminates we print the dominant eigein value and the associated eigen vector in root processor */ 
+
+  /*free(y_blocks);
+  free(y);
+  free(x);
+  free(A_blockrows);*/
+
+
+  MPI_Type_free(&blockselect);
+  MPI_Type_free(&blocktype);
+  
+  MPI_Finalize();
+
+
+  return 0;
+
+}
+
+
 
 /* Function to Print matrix */
 void Prvalues(int length, int heigth,  double matrix[length * heigth]){   
@@ -20,6 +148,7 @@ void Prvalues(int length, int heigth,  double matrix[length * heigth]){
     }
     printf("\n");
 }
+
 
 /* Functions to normalize a vector */
 
@@ -52,157 +181,76 @@ void norm_vect(int vect_length,double x[vect_length]){
 
 /* Function to multiply the sub row-matrix by the vector x and store it in x*/
 
-void mat_mult(int heigth, int length, double A_rows[length*heigth], double x[length], double y[heigth]){
+void mat_mult( int length, double A_rows[], double x[], double y[]){
 
-    int  i, j;
+    int  i, j, rank, nprocs;
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
+
+    /* Broadcast the column vector from proc 0 to all processes */
+    MPI_Bcast(&x[0],length,MPI_DOUBLE,0,MPI_COMM_WORLD);
+
+    double tmp[length/nprocs];      
     
-    for(i = 0; i < heigth; i++){
+    for(i = 0; i < length/nprocs; i++){
         for(j = 0; j < length ; j++){
-           y[i] += A_rows[i*length + j] * x[j] ;
+           tmp[i] += A_rows[i*length + j] * x[j] ;
         }
-    }    
+    }
+
+    MPI_Gather(tmp,length/nprocs,MPI_DOUBLE,y,length/nprocs,MPI_DOUBLE,0,MPI_COMM_WORLD);    
 }
 
+double power_method(double A_blocks[],int n_iterations,int mat_size){
 
-int main(int argc, char *argv[]){
+    int rank, i, n;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    double lambda = 0;
+   // double lambda0 = lambda + 2*e ;
+   // int k = 0 ;
 
-  int rank, nprocs, mat_size, blockrows_size, i, j, k, M ;
-  double lambda, lambda0, e; 
- 
-  mat_size = atoi(argv[1]);
-   
-  //double x[2] = {1.0,1.0}; test of the norm_vect function
-
-
-  double *A_blockrows;
-  double *A;
-  double *x;
-  double *y;
-  double *y_blocks;
-
-  
-
-  x = malloc(mat_size*sizeof(double));
-  
-  M = 2;
-  e = 1e-6; //e is the tolerance
-  lambda = 0;
-  lambda0 = lambda + 2*e;
-  k = 0;
-  
-  
-
-  MPI_Request req_A_send;
-  MPI_Request req_A_recv;
-
-  MPI_Init(&argc,&argv);
-  MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
-  MPI_Comm_rank(MPI_COMM_WORLD,&rank);
-
-  blockrows_size = mat_size / nprocs ;
-
-
-  y = malloc(mat_size*sizeof(double));
-  y_blocks = malloc(blockrows_size*sizeof(double));
-
-  /* Define new type to send datas */
-  MPI_Datatype blocktype, blockselect;
-
-  MPI_Type_contiguous(mat_size*blockrows_size, MPI_DOUBLE, &blocktype);
-  MPI_Type_commit(&blocktype);
-
-  MPI_Type_vector(blockrows_size, mat_size, mat_size, MPI_DOUBLE, &blockselect);
-  MPI_Type_commit(&blockselect);
-
-  if(rank == 0) {
-    /*We initialize the matrix A and send rows of A to the other processes */
-    A = (double *)malloc(sizeof(double) * mat_size * mat_size);
-    for(i = 0; i < mat_size; i++){
-        x[i]=1.0;
+    /* Define starting vector */
+    double x[mat_size];
+    if(rank==0){
+      for(i = 0; i < mat_size; i++){
+         x[i] = 1;
+      }
     }
-    
-    Prvalues(mat_size,1,x);
-    norm_vect(mat_size,x);
-    Prvalues(mat_size,1,x);
 
     
-    /* Matrix generation*/
-    for(i = 0; i < mat_size; i++){
-       for(j = 0; j < mat_size; j++){
-          A[i * mat_size + j] = i + 0.1*j;   
-       }    
-    }
-    Prvalues(mat_size, mat_size, A);
-    
- 
-    /* Distribution of Block_rows of A */
-     for (i = 0; i < nprocs; i++){
-            int i_b_m = i * blockrows_size * mat_size;
-            MPI_Isend(&A[i_b_m], 1, blockselect, i, 3, MPI_COMM_WORLD, &req_A_send);
-            
-     }
      
-     /* double norm = compute_norm(2,x);
-      printf("norm %.3f\t \n",norm);         // Testing the normalization of the vectors
-      norm_vect(2,x);
-      Prvalues(1,2,x);*/       
-  }
+   // while (abs(lambda-lambda0) >= e && k <= n_iterations ){
+    for(n = 0; n < n_iterations; n++){
+
+        
+        //Prvalues(mat_size,1,x);
+
+        if (rank == 0){
+        norm_vect(mat_size,x);
+        }
+
+       
+        //Prvalues(mat_size,1,x);
+        double  tmp[mat_size];
+        mat_mult(mat_size, A_blocks, x, tmp);
+
+                
+
+        if(rank ==0){
+        //lambda0 = lambda ;
+          for(i = 0; i < mat_size; i++){
+              x[i] = tmp[i] ;             
+             }
+        
+        }
+        
+        
+    }
 
   
-
-  /* After receiving rows of A, we start the power method and use Allgather to send y to all processes */
-  A_blockrows = (double *)malloc(mat_size * blockrows_size * sizeof(double));
-  MPI_Irecv(A_blockrows, 1, blocktype, 0, 3, MPI_COMM_WORLD, &req_A_recv);
-
-  MPI_Wait(&req_A_recv, MPI_STATUS_IGNORE);
-  
-
-  /*Initialisation of y_blocks*/
-
-  for(i = 0; i < blockrows_size; i++){
-     y_blocks[i] = 0.0 ;
-  }
-
-  MPI_Bcast(&x[0],mat_size,MPI_DOUBLE,0,MPI_COMM_WORLD);
-  //if(rank == 2)mat_mult( blockrows_size,mat_size,A_blockrows,x,y);
-
-  
- // while (abs(lambda-lambda0) >= e && k <= M ){
-    mat_mult(blockrows_size, mat_size, A_blockrows, x, y_blocks);
-//    lambda0 = lambda ;
-    MPI_Allgather(y_blocks, blockrows_size,MPI_DOUBLE,y,blockrows_size,MPI_DOUBLE,MPI_COMM_WORLD);
-    mat_mult(mat_size,1,x,y,&lambda);
- //   norm_vect(mat_size,y);
- //   k += 1;
- // }
-  
-  
-  
-
-  /* Printing Part*/
-  sleep(rank);
-  printf("rank %d \n", rank);
-  Prvalues(mat_size,1,x);
-  Prvalues(blockrows_size,1,y_blocks);
-  Prvalues(mat_size,1,y);
-  printf("lambda = %.2f\t \n",lambda);
-  //if (rank == 2) Prvalues(1, blockrows_size, y);
-  Prvalues(mat_size, blockrows_size, A_blockrows);
-
-  /*When the algorithm terminates we print the dominant eigein value and the associated eigen vector in root processor */ 
-
-  free(y_blocks);
-  free(y);
-  free(x);
-  free(A_blockrows);
-
-
-  MPI_Type_free(&blockselect);
-  MPI_Type_free(&blocktype);
-  
-  MPI_Finalize();
-
-
-  return 0;
-
+        lambda = compute_norm(mat_size, x) ;  
+        return lambda ;
 }
+
