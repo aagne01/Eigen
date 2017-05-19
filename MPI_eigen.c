@@ -22,19 +22,12 @@ int main(int argc, char *argv[]){
  
   mat_size = atoi(argv[1]);
    
-  //double x[2] = {1.0,1.0}; test of the norm_vect function
 
-
-  double *A_blockrows;
+/*  double *A_blockrows;
   double *A;
+ */ 
   
-  
-
-  
-
- // x = malloc(mat_size*sizeof(double));
-  
-  M = 500;
+  M = atoi(argv[2]);;
   e = 1e-6; //e is the tolerance
   lambda = 0;
   
@@ -50,6 +43,7 @@ int main(int argc, char *argv[]){
 
   blockrows_size = mat_size / nprocs ;
 
+  double A_blocks[mat_size*blockrows_size];
 
   /* Define new type to send datas */
   MPI_Datatype blocktype, blockselect;
@@ -62,29 +56,35 @@ int main(int argc, char *argv[]){
 
   if(rank == 0) {
     /*We initialize the matrix A and send rows of A to the other processes */
-    A = (double *)malloc(sizeof(double) * mat_size * mat_size);
+  //  A = (double *)malloc(sizeof(double) * mat_size * mat_size);
 
     
     /* Matrix generation*/
-    for(i = 0; i < mat_size; i++){
+   /* for(i = 0; i < mat_size; i++){
        for(j = 0; j < mat_size; j++){
-          if (i == j){
-             A[i*mat_size + j] = (rand()/(double)RAND_MAX )*10;;
+         // if (i == j){
+             A[i*mat_size + j] = 1;
+         // }*/
+        /*  else if(i+1 == j && i < mat_size-1){
+             A[i*mat_size + j] = mat_size;
+          }
+          else if(i == j+1 && j < mat_size-1){
+             A[i*mat_size + j] = mat_size;
           }
           else{
              A[i*mat_size +j] = 0;
-          }  
-       }    
-    }
-    Prvalues(mat_size, mat_size, A);
+          }*/
+     //  }    
+   // }
+   // Prvalues(mat_size, mat_size, A);
     
  
     /* Distribution of Block_rows of A */
-     for (i = 0; i < nprocs; i++){
+    /* for (i = 0; i < nprocs; i++){
             int i_b_m = i * blockrows_size * mat_size;
             MPI_Isend(&A[i_b_m], 1, blockselect, i, 3, MPI_COMM_WORLD, &req_A_send);
             
-     }
+     }*/
      
      /* double norm = compute_norm(2,x);
       printf("norm %.3f\t \n",norm);         // Testing the normalization of the vectors
@@ -95,14 +95,26 @@ int main(int argc, char *argv[]){
   
 
   /* After receiving rows of A, we start the power method and use Allgather to send y to all processes */
-  A_blockrows = (double *)malloc(mat_size * blockrows_size * sizeof(double));
+ /* A_blockrows = (double *)malloc(mat_size * blockrows_size * sizeof(double));
   MPI_Irecv(A_blockrows, 1, blocktype, 0, 3, MPI_COMM_WORLD, &req_A_recv);
 
   MPI_Wait(&req_A_recv, MPI_STATUS_IGNORE);
-    
+  */
+   
+   for(j = 0; j<mat_size; j++){
+      for(i = 0; i<blockrows_size; i++){
+     
+         if (j-rank*blockrows_size>i){
+             A_blocks[j + i*mat_size] = 0; 
+         } 
+         else{
+             A_blocks[j + i*mat_size] = rank*(blockrows_size) + i + 1;
+         }
+       }
+   }  
  
     
-   lambda = power_method(A_blockrows,M,mat_size);
+   lambda = power_method(A_blocks,M,mat_size);
   
   
 
@@ -114,7 +126,7 @@ int main(int argc, char *argv[]){
   //Prvalues(mat_size,1,y);
   if (rank == 0) printf("lambda = %.2f\t \n",lambda);
   //if (rank == 2) Prvalues(1, blockrows_size, y);
- // Prvalues(mat_size, blockrows_size, A_blockrows);
+  Prvalues(mat_size, blockrows_size, A_blocks);
 
   /*When the algorithm terminates we print the dominant eigein value and the associated eigen vector in root processor */ 
 
