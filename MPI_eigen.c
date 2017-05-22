@@ -4,8 +4,9 @@
 #include <stdlib.h>
 #include <mpi.h>
 #include <math.h>
-
-
+#include <time.h>
+#include <unistd.h>
+#include <string.h>
 
 void Prvalues(int length, int heigth,  double matrix[length * heigth]);
 void mat_mult(double A_rows[], double vect[], double result[], int length);
@@ -14,7 +15,10 @@ double powerMethod(double A_rows[], int n_times, int mat_size);
 
 
 
-void generateMatrix(double A_rows[], int mat_size);
+void generate_triangle(double A_rows[], int mat_size);
+void generate_diagonal(double A_rows[], int mat_size);
+void generate_ones(double A_rows[], int mat_size);
+void generate_tridiag(double A_rows[], int mat_size);
 
 
 int main(int argc, char* argv[]) {
@@ -39,9 +43,9 @@ int main(int argc, char* argv[]) {
 
   /* Generate the matrix */
   double A_blocks[mat_size*blockrows_size];
-  generateMatrix(A_blocks,mat_size);
-
-
+  generate_tridiag(A_blocks,mat_size);
+  
+ 
   /* Run the powerMethod algorithm */
   double start = MPI_Wtime();
   double lambda = powerMethod(A_blocks,n_times,mat_size);
@@ -73,8 +77,8 @@ int main(int argc, char* argv[]) {
 }
 
 
-
-void generateMatrix(double A_rows[], int mat_size){
+/* Function that generates a triangular matrix, used for verification purposes */
+void generate_triangle(double A_rows[], int mat_size){
 
   int rank, nprocs;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -93,6 +97,76 @@ void generateMatrix(double A_rows[], int mat_size){
 
 }
 
+/*Function that generates a diagonal matrix, used for verification purposes*/
+
+void generate_diagonal(double A_rows[], int mat_size){
+
+  int rank, nprocs;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
+  /* Define the matrix on the (different) processors */
+  for(int j=0; j<mat_size ; j++){
+  for(int i=0; i<mat_size/nprocs; i++){
+     if(j == i + rank*mat_size/nprocs){
+       A_rows[j+mat_size*i] = i+1+rank*mat_size/nprocs;
+     }
+
+     else{
+       A_rows[j+mat_size*i] = 0;
+     }
+      
+  }
+  }
+
+}
+
+/*Function that generates an all ones matrix, used for verification purposes*/
+
+void generate_ones(double A_rows[], int mat_size){
+
+  int rank, nprocs;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
+  /* Define the matrix on the (different) processors */
+  for(int j=0; j<mat_size ; j++){
+  for(int i=0; i<mat_size/nprocs; i++){
+       A_rows[j+mat_size*i] = 1;
+      
+  }
+  }
+
+}
+
+
+/*Function that generates a tri-diagonal matrix, used to measure performance*/
+
+void generate_tridiag(double A_rows[], int mat_size){
+
+  int rank, nprocs;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
+  /* Define the matrix on the (different) processors */
+  for(int j=0; j<mat_size ; j++){
+  for(int i=0; i<mat_size/nprocs; i++){
+     if(j >1+ i + rank*mat_size/nprocs){
+       A_rows[j+mat_size*i] = 0;
+     }
+
+     else if(j<i-1+rank*mat_size/nprocs){
+       A_rows[j+mat_size*i] = 0;
+     }
+
+     else{
+       A_rows[j+mat_size*i] = mat_size;
+     }
+      
+  }
+  }
+
+}
 
 double compute_norm2(double vect[], int vect_length){
 
