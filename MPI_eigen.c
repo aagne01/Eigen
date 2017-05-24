@@ -1,4 +1,9 @@
-
+/*
+* Parallel and Distributed Programming 
+* Individual project
+* author : Amadou Agne
+* May 2017
+*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,12 +13,10 @@
 #include <unistd.h>
 #include <string.h>
 
-void Prvalues(int length, int heigth,  double matrix[length * heigth]);
+void pr_values(int length, int heigth,  double matrix[length * heigth]);
 void mat_mult(double A_rows[], double vect[], double result[], int length);
 double compute_norm2(double vect[], int vect_length);
-double powerMethod(double A_rows[], int n_times, int mat_size);
-
-
+double power_method(double A_rows[], int n_times, int mat_size);
 
 void generate_triangle(double A_rows[], int mat_size);
 void generate_diagonal(double A_rows[], int mat_size);
@@ -23,54 +26,58 @@ void generate_tridiag(double A_rows[], int mat_size);
 
 int main(int argc, char* argv[]) {
 
-  /* Set parameters */
+  /* input parameters */
   int mat_size = atoi(argv[1]);
   int n_times = atoi(argv[2]);
-
-
-  /* Start parallel calculations */
+  
+  
+  
   int rank, nprocs;
   MPI_Init(&argc, & argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
-
-
-  /* p has to be a divisor of N !! */
-
-
+     
+  /* nprocs has to be a divisor of mat_size ! */
+  if (rank == 0){
+     if(mat_size%nprocs != 0 || argc > 3 || argc < 2){
+        printf("How to use: mpirun -np nprocs ./MPI_eigen mat_size ntimes \n");
+        exit(0);
+     }
+   }
  
   int blockrows_size = mat_size / nprocs;
 
   /* Generate the matrix */
   double A_blocks[mat_size*blockrows_size];
-  generate_tridiag(A_blocks,mat_size);
+  generate_ones(A_blocks,mat_size);
   
  
   /* Run the powerMethod algorithm */
   double start = MPI_Wtime();
-  double lambda = powerMethod(A_blocks,n_times,mat_size);
+  double lambda = power_method(A_blocks,n_times,mat_size);
   double stop = MPI_Wtime();
 
 
 
   /* Calculating times */
-  double timediff = stop - start;
+  double time_elapsed = stop - start;
   double times[nprocs];
-  double average = 0;
-  MPI_Gather(&timediff,1,MPI_DOUBLE,times,1,MPI_DOUBLE,0,MPI_COMM_WORLD);
+  double mean = 0;
+  MPI_Gather(&time_elapsed,1,MPI_DOUBLE,times,1,MPI_DOUBLE,0,MPI_COMM_WORLD);
   if(rank==0){
     for(int i=0; i<nprocs; i++)
-      average += times[i];
-    average /= nprocs;
+      mean += times[i];
+    mean /= nprocs;
   }
 
 
-  /* Print the results */
-  if(rank==0)
-    printf("dimension\t%d\tdominant lambda\t%f\ttime\t%f\n",mat_size,lambda,average);
+  /* Print results */
+  if(rank==0){
+    printf("dominant lambda :  %.4f\t\n",lambda);
+    printf("time of the power method algorithm :  %.4f\t\n",mean);
+  }
 
-
-  /* End MPI */
+ 
   MPI_Finalize();
 
   return 0;
@@ -173,10 +180,10 @@ double compute_norm2(double vect[], int vect_length){
   /* Add the square of each element */
   double result = 0;
   for(int i=0; i<vect_length;i++)
-    result += pow(vect[i],2);
+    result += vect[i]*vect[i];
 
-  /* The norm of the vector is the square root of the sum */
-  return pow(result,0.5);
+  
+  return sqrt(result);
 }
 
 
@@ -188,11 +195,11 @@ void mat_mult(double A_rows[], double vect[], double result[], int mat_size){
   MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
 
 
-  /* Broadcast the vector defined on pr0 */
+  /* Broadcast the vector x defined on proc 0 */
   MPI_Bcast(vect, mat_size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
 
-  /* Set temporary result to zero */
+  /* Set y_i  i=1 .. nprocs  to zero */
   double y_i[mat_size/nprocs];
   for(int i=0; i<mat_size/nprocs; i++)
     y_i[i]=0;
@@ -204,21 +211,21 @@ void mat_mult(double A_rows[], double vect[], double result[], int mat_size){
     y_i[i] += A_rows[j+mat_size*i] * vect[j];
 
 
-  /* Gather the results from the different processors */
+  /* Gather the results from the different processors and put it back to proc 0 */
   MPI_Gather(y_i,mat_size/nprocs,MPI_DOUBLE,result,mat_size/nprocs,MPI_DOUBLE,0,MPI_COMM_WORLD);
 
 }
 
 
 
-double powerMethod(double A_rows[], int n_times, int mat_size) {
+double power_method(double A_rows[], int n_times, int mat_size) {
 
   int rank;
   double lambda=0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   
 
-  /* Define starting vector */
+  /* Defining and initializing vector x */
   double x[mat_size];
   if(rank==0){
     
@@ -227,11 +234,11 @@ double powerMethod(double A_rows[], int n_times, int mat_size) {
   }
 
 
-  /* The actual iteration process */
+  /* The main loop of the algorithim */
   for(int n=0; n<n_times; n++){
 
 
-    /* Normalize the vector*/
+    /* Normalizing vector x*/
     if(rank==0){
       double norm = compute_norm2(x,mat_size);
       for(int i=0; i<mat_size; i++)
@@ -239,7 +246,7 @@ double powerMethod(double A_rows[], int n_times, int mat_size) {
     }
 
 
-    /* Calculate the product of the matrix and the vector */
+    /* Computing the multiplication between the matrix rows and x */
     double x_tmp[mat_size];
     mat_mult(A_rows,x,x_tmp,mat_size);
     if(rank==0){
@@ -258,7 +265,7 @@ double powerMethod(double A_rows[], int n_times, int mat_size) {
 
 
 /* Function to Print matrix and vectors*/
-void Prvalues(int length, int heigth,  double matrix[length * heigth]){   
+void pr_values(int length, int heigth,  double matrix[length * heigth]){   
     int i, j;
     printf("\n");
     for (i = 0; i < heigth; i++){
