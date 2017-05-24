@@ -222,8 +222,7 @@ double power_method(double A_rows[], int n_times, int mat_size) {
 
   int rank;
   double lambda=0;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);  
 
   /* Defining and initializing vector x */
   double x[mat_size];
@@ -233,19 +232,14 @@ double power_method(double A_rows[], int n_times, int mat_size) {
       x[i]=1;
   }
 
-
   /* The main loop of the algorithim */
   for(int n=0; n<n_times; n++){
-
-
     /* Normalizing vector x*/
     if(rank==0){
       double norm = compute_norm2(x,mat_size);
       for(int i=0; i<mat_size; i++)
 	x[i] = x[i]/norm;
     }
-
-
     /* Computing the multiplication between the matrix rows and x */
     double x_tmp[mat_size];
     mat_mult(A_rows,x,x_tmp,mat_size);
@@ -255,9 +249,7 @@ double power_method(double A_rows[], int n_times, int mat_size) {
       }
       lambda = compute_norm2(x,mat_size);
     }
-
-  /* The result is the norm of the vector */
-  
+  /* The result is the norm of the vector */  
   return lambda;
 }
 
