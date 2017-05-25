@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
   MPI_Init(&argc, & argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
-     
+  
   /* nprocs has to be a divisor of mat_size ! */
   if (rank == 0){
      if(mat_size%nprocs != 0 || argc > 3 || argc < 2){
@@ -49,7 +49,7 @@ int main(int argc, char* argv[]) {
 
   /* Generate the matrix */
   double A_blocks[mat_size*blockrows_size];
-  generate_ones(A_blocks,mat_size);
+  generate_tridiag(A_blocks,mat_size);
   
  
   /* Run the powerMethod algorithm */
@@ -73,8 +73,12 @@ int main(int argc, char* argv[]) {
 
   /* Print results */
   if(rank==0){
+    printf("nprocs : %d \n", nprocs);   
+    printf("size of matrix : %d \n", mat_size);
+    printf("number of iterations : %d \n", n_times);
     printf("dominant lambda :  %.4f\t\n",lambda);
     printf("time of the power method algorithm :  %.4f\t\n",mean);
+    printf("\n");
   }
 
  
